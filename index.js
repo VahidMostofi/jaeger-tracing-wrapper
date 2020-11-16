@@ -1,7 +1,13 @@
 require('dotenv').config();
 const cluster = require('cluster');
-const {tracer, trackMiddleware} = require('./trace_utils');
-const { FORMAT_HTTP_HEADERS } = require('opentracing');
+const {setup, sendRecord} = require('./producer');
+
+setTimeout(() => {
+  console.log('running setup')
+  setup();
+}, 5000);
+
+// const { tracer, trackMiddleware } = require('./trace_utils');
 
 if (cluster.isMaster) {
     console.log(`Master ${process.pid} is running`);
@@ -15,17 +21,38 @@ if (cluster.isMaster) {
       console.log(`worker ${worker.process.pid} died`);
     });
   } else {
+
     const express = require('express');
     const axios = require('axios');
+    // measure response time of each request
+    axios.interceptors.request.use(function (config) {
+      config.metadata = { startTime: new Date()}
+      return config;
+    }, function (error) {
+      return Promise.reject(error);
+    });
+
+    axios.interceptors.response.use(function (response) {
+      response.config.metadata.endTime = new Date()
+      response.duration = response.config.metadata.endTime - response.config.metadata.startTime
+      return response;
+    }, function (error) {
+      error.config.metadata.endTime = new Date();
+      error.duration = error.config.metadata.endTime - error.config.metadata.startTime;
+      return Promise.reject(error);
+    });
+    //------------------------------------------
+    const GlobalConfig = {'base': process.env.BASE_URL}
+    //------------------------------------------
     const bodyParser = require('body-parser');
     const app = express();
 
     const port = process.env.PORT;
-    const base = process.env.BASE_URL;
 
     app.use(bodyParser.json());
-    // app.use(trackMiddleware("wrapper"))
-    app.use((req,res,next)=>{
+
+    app.use(async (req,res,next)=>{
+        console.log('!')
         const config = {
             method: req.method,
             headers: req.headers,
@@ -34,22 +61,30 @@ if (cluster.isMaster) {
         if (! req.method.toLocaleLowerCase().localeCompare('get') == 0 ){
             config.data = req.body;
         }
-        
-        const span = tracer.startSpan("backend");
-        tracer.inject(span, FORMAT_HTTP_HEADERS, config.headers);
-        axios(base + req.path, config)
+        console.log(GlobalConfig['base'] + req.path);
+        axios(GlobalConfig['base'] + req.path, config)
         .then((response)=>{
-            span.finish();
-            return res.send(response.data);
+          sendRecord({
+            httpMethod: req.method, 
+            path: req.path, 
+            httpCode: 200, 
+            responseTime: response.duration
+          });
+          return res.send(response.data);
         })
         .catch((err)=>{
-            span.finish();
-            console.log(err);
-            return res.status(500).send({message: err.message || "internal server error"});
+          console.log(err.message);
+          sendRecord({
+            httpMethod: req.method, 
+            path: req.path, 
+            httpCode: 500, 
+            responseTime: err.duration
+          });
+          return res.status(500).send({message: err.message || "internal server err"});
         });
     });
 
     app.listen(port, () => {
-    console.log(`Wrapper app listening at ${port}`)
+      console.log(`Wrapper app listening at ${port}`)
     });
   }

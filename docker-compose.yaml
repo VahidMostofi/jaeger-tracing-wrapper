@@ -1,0 +1,39 @@
+version: '3'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    volumes:
+      # - ./.docker/rabbitmq/etc/:/etc/rabbitmq/
+      - ./.docker/rabbitmq/data/:/var/lib/rabbitmq/
+      - ./.docker/rabbitmq/logs/:/var/log/rabbitmq/
+    # environment:
+    #     RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE}
+    #     RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+    #     RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - 5672:5672
+      - 15672:15672
+
+  wrapper:
+    hostname: wrapper
+    container_name: rest-api-wrapper
+    build: "."
+    image: vahidmostofi/rest-api-wrapper
+    restart: on-failure
+    ports:
+      - "10020:10020"
+    depends_on:
+      - rabbitmq
+    environment:
+      - WorkerCount=1
+      - PORT=10020
+      - BASE_URL=http://192.168.39.212:30482
+      # - JWT_KEY=someKeyIsGoodAndSomeOfThemBNoGEo1ioD!
+      # - JAEGER_SERVICE_NAME=gateway
+      # - JAEGER_COLLECTOR_HOST="jaeger-collector"
+      # - JAEGER_COLLECTOR_PORT=14268
+      # - JAEGER_AGENT_HOST="jaeger-agent"
+      # - JAEGER_AGENT_PORT=6831
+      # - SAMPELLING_PROB=1
