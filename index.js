@@ -1,5 +1,6 @@
 require('dotenv').config();
 const cluster = require('cluster');
+const { response } = require('express');
 const {setup, sendRecord} = require('./producer');
 
 setTimeout(() => {
@@ -41,13 +42,22 @@ if (cluster.isMaster) {
       error.duration = error.config.metadata.endTime - error.config.metadata.startTime;
       return Promise.reject(error);
     });
-    //------------------------------------------
-    const GlobalConfig = {'base': process.env.BASE_URL}
-    //------------------------------------------
     const bodyParser = require('body-parser');
     const app = express();
-
     const port = process.env.PORT;
+
+    //------------------------------------------
+    const GlobalConfig = {'base': process.env.BASE_URL};
+    app.get('/__config', async (req,res,next)=>{
+      changes = []
+      if (req.query.base_url){
+        console.log('updating config')
+        GlobalConfig['base'] = req.query.base_url;
+        changes.push('base_url set to ' + req.query.base_url)        
+      }
+      res.send(changes)
+    });
+    //------------------------------------------
 
     app.use(bodyParser.json());
 
