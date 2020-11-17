@@ -5,11 +5,22 @@ const amqp = require('amqplib');
 const messageQueueConnectionString = "amqp://rabbitmq:5672";
 
 let channel = undefined;
-
+let counter = 0;
 const setup = async () => {
   console.log("Setting up RabbitMQ Exchanges/Queues");
-  // connect to RabbitMQ Instance
-  let connection = await amqp.connect(messageQueueConnectionString);
+  let connection = undefined;
+  try{
+    // connect to RabbitMQ Instance
+    connection = await amqp.connect(messageQueueConnectionString);
+  } catch (error) {
+    console.log('failed connecting to rabbitmq');
+    if (counter < 10){
+      setTimeout(setup, 3000);
+    }else{
+      throw error;
+    }
+    return;
+  }
 
   // create a channel
   channel = await connection.createConfirmChannel();
